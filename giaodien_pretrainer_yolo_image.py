@@ -52,7 +52,7 @@ np.random.seed(42)
 colors = np.random.randint(0, 255, size=(len(class_labels), 3), dtype="uint8")
 
 # --- UI Streamlit ---
-st.title("🖼️ YOLO Object Detection")
+st.title("🖼️ YOLO Object Detection: CPU LOADING")
 st.write("Tải ảnh, video lên hoặc sử dụng webcam để nhận diện đối tượng bằng YOLOv3.")
 
 # --- Sidebar để chọn chế độ ---
@@ -214,6 +214,7 @@ elif option == "Video":
                      if class_id not in detected_objects:
                         detected_objects[class_id]=[]
                      detected_objects[class_id].append({"box": (startX,startY, endX, endY), "confidence": float(confidence), "center" : (centerX, centerY)})
+
             final_objects = []
             for class_id, objects in detected_objects.items():
                objects = sorted(objects, key=lambda x: x["confidence"], reverse = True)
@@ -229,6 +230,7 @@ elif option == "Video":
                         break
                   if not found:
                      grouped_objects.append([obj])
+
                for group in grouped_objects:
                   best_object = max(group, key=lambda x:x["confidence"])
                   final_objects.append(best_object)
@@ -303,8 +305,9 @@ elif option == "Webcam (Real-time)":
                  endY = int(startY + height)
 
                  if class_id not in detected_objects:
-                    detected_objects[class_id]=[]
+                    detected_objects[class_id]=[] 
                  detected_objects[class_id].append({"box": (startX,startY, endX, endY), "confidence": float(confidence), "center" : (centerX, centerY)})
+
         final_objects = []
         for class_id, objects in detected_objects.items():
            objects = sorted(objects, key=lambda x: x["confidence"], reverse = True)
@@ -320,6 +323,7 @@ elif option == "Webcam (Real-time)":
                     break
               if not found:
                  grouped_objects.append([obj])
+
            for group in grouped_objects:
               best_object = max(group, key=lambda x:x["confidence"])
               final_objects.append(best_object)
