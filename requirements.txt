@@ -2,5 +2,5 @@ streamlit
 opencv-python-headless
 numpy
 gdown
-
 typing-extensions
+opencv-python

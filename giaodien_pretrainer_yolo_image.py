@@ -1,12 +1,17 @@
-import streamlit as st
+# -*- coding: utf-8 -*-
+"""
+@author: abhilash
+"""
+
 import numpy as np
 import cv2
+import streamlit as st
 import tempfile
 import os
-import time
-import gdown  # Thư viện tải file từ Google Drive
+import gdown  # Import gdown
 
-# --- Tải yolov3.weights từ Google Drive nếu chưa có ---
+
+# Function to download YOLOv3 weights from Google Drive
 def download_weights():
     file_id = "10ygsxRHye1DNgpErQZ6NghVIPhat6-UO"
     output_path = "model/yolov3.weights"
@@ -19,325 +24,224 @@ def download_weights():
     else:
         st.info("✔️ File yolov3.weights đã có sẵn.")
 
-download_weights()
+# Function to get permission for webcam access
+def request_webcam_permission():
+    """Requests permission to use the webcam."""
+    # In a real-world scenario, you would use a more robust method to request
+    # webcam permissions, which is outside the scope of this basic example.
+    # This is a placeholder for the permission request.
+    permission_granted = st.checkbox("Allow access to webcam?")
+    return permission_granted
 
-# --- Load YOLO Model ---
-@st.cache_resource
-def load_yolo():
-    try:
-        model = cv2.dnn.readNetFromDarknet("model/yolov3.cfg", "model/yolov3.weights")
-        layer_names = model.getLayerNames()
-        output_layers = [layer_names[i - 1] for i in model.getUnconnectedOutLayers().flatten()]
-        return model, output_layers
-    except Exception as e:
-        st.error(f"🚨 Lỗi khi tải mô hình YOLO: {e}")
-        return None, None
 
-yolo_model, yolo_output_layers = load_yolo()
+def main():
 
-# --- Class Labels ---
-class_labels = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
-                "trafficlight", "firehydrant", "stopsign", "parkingmeter", "bench", "bird", "cat",
-                "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
-                "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sportsball",
-                "kite", "baseballbat", "baseballglove", "skateboard", "surfboard", "tennisracket",
-                "bottle", "wineglass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-                "sandwich", "orange", "broccoli", "carrot", "hotdog", "pizza", "donut", "cake", "chair",
-                "sofa", "pottedplant", "bed", "diningtable", "toilet", "tvmonitor", "laptop", "mouse",
-                "remote", "keyboard", "cellphone", "microwave", "oven", "toaster", "sink", "refrigerator",
-                "book", "clock", "vase", "scissors", "teddybear", "hairdrier", "toothbrush"]
+    st.title("Object Detection with YOLOv3 CPU LOADING")
 
-# Màu cho bounding boxes
-np.random.seed(42)
-colors = np.random.randint(0, 255, size=(len(class_labels), 3), dtype="uint8")
+    # Sidebar options
+    source = st.sidebar.selectbox("Choose input source:", ("Image", "Video", "Webcam"))
 
-# --- UI Streamlit ---
-st.title("🖼️ YOLO Object Detection: CPU LOADING")
-st.write("Tải ảnh, video lên hoặc sử dụng webcam để nhận diện đối tượng bằng YOLOv3.")
+    # Placeholder for displaying the output image/video
+    output_placeholder = st.empty()
 
-# --- Sidebar để chọn chế độ ---
-option = st.sidebar.selectbox("Chọn chế độ:", ["Ảnh tĩnh", "Video", "Webcam (Real-time)"])
+    # Download button placeholder
+    download_button_placeholder = st.empty()
 
-if option == "Ảnh tĩnh":
-    uploaded_file = st.file_uploader("📤 Chọn ảnh...", type=["jpg", "png", "jpeg"])
+    class_labels = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+                    "trafficlight", "firehydrant", "stopsign", "parkingmeter", "bench", "bird", "cat",
+                    "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+                    "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sportsball",
+                    "kite", "baseballbat", "baseballglove", "skateboard", "surfboard", "tennisracket",
+                    "bottle", "wineglass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+                    "sandwich", "orange", "broccoli", "carrot", "hotdog", "pizza", "donut", "cake", "chair",
+                    "sofa", "pottedplant", "bed", "diningtable", "toilet", "tvmonitor", "laptop", "mouse",
+                    "remote", "keyboard", "cellphone", "microwave", "oven", "toaster", "sink", "refrigerator",
+                    "book", "clock", "vase", "scissors", "teddybear", "hairdrier", "toothbrush"]
 
-    if uploaded_file is not None and yolo_model:
-        # ... (Phần code xử lý ảnh tĩnh giữ nguyên) ...
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-        tfile.write(uploaded_file.read())
-        image_path = tfile.name
 
-        with open(image_path, "rb") as f:
-             img_array = np.asarray(bytearray(f.read()), dtype=np.uint8)
-             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)  # Giữ nguyên màu gốc
+    # Generate a color palette for the bounding boxes.  More robust, handles any number of classes.
+    def generate_colors(class_labels):
+        num_classes = len(class_labels)
+        colors = []
+        for i in range(num_classes):
+          r = int((i * 57 + 137) % 256)  # Distribute colors more evenly
+          g = int((i * 93 + 201) % 256)
+          b = int((i * 47 + 83) % 256)
+          colors.append((r, g, b))
+        return colors
 
-        img_height, img_width = img.shape[:2]
-        img_blob = cv2.dnn.blobFromImage(img, 0.003922, (416, 416), swapRB=True, crop=False)
+    class_colors = generate_colors(class_labels)
+    class_colors = np.array(class_colors)
+
+
+
+    def process_image(img_to_detect):
+        img_height = img_to_detect.shape[0]
+        img_width = img_to_detect.shape[1]
+
+        # convert to blob
+        img_blob = cv2.dnn.blobFromImage(img_to_detect, 0.003922, (320, 320), swapRB=True, crop=False)
+
+        # Loading pretrained model
+        yolo_model = cv2.dnn.readNetFromDarknet('model/yolov3.cfg', 'model/yolov3.weights')
+
+        # Get all layers
+        yolo_layers = yolo_model.getLayerNames()
+        yolo_output_layer = [yolo_layers[i - 1] for i in yolo_model.getUnconnectedOutLayers().flatten()]
+
         yolo_model.setInput(img_blob)
-        detection_layers = yolo_model.forward(yolo_output_layers)
+        obj_detection_layers = yolo_model.forward(yolo_output_layer)
 
-        detected_objects = {}
+        class_ids_list = []
+        boxes_list = []
+        confidences_list = []
 
-        for layer in detection_layers:
-            for detection in layer:
-                scores = detection[5:]
-                class_id = np.argmax(scores)
-                confidence = scores[class_id]
+        for object_detection_layer in obj_detection_layers:
+            for object_detection in object_detection_layer:
+                all_scores = object_detection[5:]
+                predicted_class_id = np.argmax(all_scores)
+                prediction_confidence = all_scores[predicted_class_id]
 
-                if confidence > 0.5:
-                    box = detection[:4] * np.array([img_width, img_height, img_width, img_height])
-                    (centerX, centerY, width, height) = box.astype("int")
-                    startX = int(centerX - (width / 2))
-                    startY = int(centerY - (height / 2))
-                    endX = startX + width
-                    endY = startY + height
+                if prediction_confidence > 0.20:
+                    predicted_class_label = class_labels[predicted_class_id]
+                    bounding_box = object_detection[0:4] * np.array([img_width, img_height, img_width, img_height])
+                    (box_center_x_pt, box_center_y_pt, box_width, box_height) = bounding_box.astype("int")
+                    start_x_pt = int(box_center_x_pt - (box_width / 2))
+                    start_y_pt = int(box_center_y_pt - (box_height / 2))
 
-                    if class_id not in detected_objects:
-                        detected_objects[class_id] = []
+                    class_ids_list.append(predicted_class_id)
+                    confidences_list.append(float(prediction_confidence))
+                    boxes_list.append([start_x_pt, start_y_pt, int(box_width), int(box_height)])
 
-                    detected_objects[class_id].append({
-                        "box": (startX, startY, endX, endY),
-                        "confidence": confidence,
-                        "center": (centerX, centerY)
-                    })
+        max_value_ids = cv2.dnn.NMSBoxes(boxes_list, confidences_list, 0.5, 0.4)
 
-        final_objects = []
-        for class_id, objects in detected_objects.items():
-            objects = sorted(objects, key=lambda x: x["confidence"], reverse=True)
+        if len(max_value_ids) > 0:
+            for max_valueid in max_value_ids.flatten():
+                box = boxes_list[max_valueid]
+                start_x_pt = box[0]
+                start_y_pt = box[1]
+                box_width = box[2]
+                box_height = box[3]
 
-            grouped_objects = []
-            for obj in objects:
-                centerX, centerY = obj["center"]
+                predicted_class_id = class_ids_list[max_valueid]
+                predicted_class_label = class_labels[predicted_class_id]
+                prediction_confidence = confidences_list[max_valueid]
 
-                found = False
-                for group in grouped_objects:
-                    existing_centerX, existing_centerY = group[0]["center"]
-                    distance = np.sqrt((centerX - existing_centerX) ** 2 + (centerY - existing_centerY) ** 2)
+                end_x_pt = start_x_pt + box_width
+                end_y_pt = start_y_pt + box_height
 
-                    if distance < 50:
-                        found = True
-                        break
+                box_color = class_colors[predicted_class_id]
+                box_color = [int(c) for c in box_color]  # Ensure color is a list of integers
 
-                if not found:
-                    grouped_objects.append([obj])
+                predicted_class_label = "{}: {:.2f}%".format(predicted_class_label, prediction_confidence * 100)
+                print("predicted object {}".format(predicted_class_label))
 
-            for group in grouped_objects:
-                best_object = max(group, key=lambda x: x["confidence"])
-                final_objects.append(best_object)
+                cv2.rectangle(img_to_detect, (start_x_pt, start_y_pt), (end_x_pt, end_y_pt), box_color, 1)
+                cv2.putText(img_to_detect, predicted_class_label, (start_x_pt, start_y_pt - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 1)
 
-        for obj in final_objects:
-            (startX, startY, endX, endY) = obj["box"]
-            confidence = obj["confidence"]
-            class_id = next(key for key, val in detected_objects.items() if obj in val)
-            color = [int(c) for c in colors[class_id]]
-            label = f"{class_labels[class_id]}: {confidence:.2f}"
+        return img_to_detect
 
-            cv2.rectangle(img, (startX, startY), (endX, endY), color, 2)
-            cv2.putText(img, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-        st.image(img, caption="📍 Kết quả nhận diện", use_column_width=True, channels="BGR")  # Hiển thị ảnh với màu chính xác
 
-        # --- Lưu ảnh đã xử lý vào tệp tạm thời ---
-        temp_save_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        cv2.imwrite(temp_save_path, img)  # Giữ nguyên màu khi lưu
+    if source == "Image":
+        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+        if uploaded_file is not None:
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+            img_to_detect = cv2.imdecode(file_bytes, 1)
+            processed_image = process_image(img_to_detect)
+            output_placeholder.image(processed_image, channels="BGR", caption="Processed Image")
 
-        # --- Tạo nút tải xuống ảnh ---
-        with open(temp_save_path, "rb") as file:
-            st.download_button(
-                label="📥 Tải ảnh kết quả",
-                data=file,
-                file_name="yolo_detection_result.jpg",
+             # Download processed image
+            _, buffer = cv2.imencode(".jpg", processed_image)  # Encode as JPG
+            download_button_placeholder.download_button(
+                label="Download Processed Image",
+                data=buffer.tobytes(),  # Convert to bytes
+                file_name="processed_image.jpg",
                 mime="image/jpeg"
             )
 
-        # Xóa file ảnh tạm thời
-        for _ in range(3):
-            try:
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                if os.path.exists(temp_save_path):
-                    os.remove(temp_save_path)
-                break
-            except PermissionError:
-                time.sleep(2)
 
-elif option == "Video":
-    uploaded_file = st.file_uploader("📤 Chọn video...", type=["mp4", "avi", "mov"])
+    elif source == "Video":
+        uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "avi", "mov"])
+        if uploaded_file is not None:
+            tfile = tempfile.NamedTemporaryFile(delete=False)
+            tfile.write(uploaded_file.read())
 
-    if uploaded_file is not None and yolo_model:
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        tfile.write(uploaded_file.read())
+            vid = cv2.VideoCapture(tfile.name)
 
-        video_capture = cv2.VideoCapture(tfile.name)
+            # Get video properties for output
+            fps = vid.get(cv2.CAP_PROP_FPS)
+            frame_width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # --- Placeholder cho video output ---
-        video_placeholder = st.empty()
-
-        # --- Nút download (khởi tạo trước, để cập nhật sau) ---
-        download_button_placeholder = st.empty()
-
-         # --- Ghi video đầu ra ---
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Hoặc *'XVID'
-        temp_output_path = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False).name
-        out = cv2.VideoWriter(temp_output_path, fourcc, 20.0, (int(video_capture.get(3)), int(video_capture.get(4))))
+            # Define the codec and create VideoWriter object.
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use 'mp4v' for MP4.
+            temp_out_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+            out = cv2.VideoWriter(temp_out_file.name, fourcc, fps, (frame_width, frame_height))
 
 
-        while video_capture.isOpened():
-            ret, frame = video_capture.read()
-            if not ret:
-                break  # Kết thúc khi hết video
-
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img_height, img_width = frame.shape[:2]
-            img_blob = cv2.dnn.blobFromImage(frame, 0.003922, (416, 416), swapRB=True, crop=False)
-
-            yolo_model.setInput(img_blob)
-            detection_layers = yolo_model.forward(yolo_output_layers)
-
-             # --- Phần xử lý detection và vẽ bounding box (tương tự như phần ảnh tĩnh) ---
-            detected_objects = {}
-
-            for layer in detection_layers:
-               for detection in layer:
-                  scores = detection[5:]
-                  class_id = np.argmax(scores)
-                  confidence = scores[class_id]
-                  if confidence > 0.5:
-                     box = detection[0:4] * np.array([img_width, img_height, img_width, img_height])
-                     (centerX, centerY, width, height) = box.astype("int")
-
-                     startX = int(centerX - (width / 2))
-                     startY = int(centerY - (height / 2))
-                     endX = int(startX + width)
-                     endY = int(startY + height)
-
-                     if class_id not in detected_objects:
-                        detected_objects[class_id]=[]
-                     detected_objects[class_id].append({"box": (startX,startY, endX, endY), "confidence": float(confidence), "center" : (centerX, centerY)})
-
-            final_objects = []
-            for class_id, objects in detected_objects.items():
-               objects = sorted(objects, key=lambda x: x["confidence"], reverse = True)
-               grouped_objects = []
-               for obj in objects:
-                  centerX, centerY = obj["center"]
-                  found=False
-                  for group in grouped_objects:
-                     existing_centerX, existing_centerY = group[0]["center"]
-                     distance = np.sqrt((centerX - existing_centerX)**2 + (centerY- existing_centerY)**2)
-                     if distance < 50: #ngưỡng khoảng cách
-                        found = True
-                        break
-                  if not found:
-                     grouped_objects.append([obj])
-
-               for group in grouped_objects:
-                  best_object = max(group, key=lambda x:x["confidence"])
-                  final_objects.append(best_object)
-
-            for obj in final_objects:
-               startX, startY, endX, endY = obj["box"]
-               confidence = obj["confidence"]
-               class_id = next(key for key, value in detected_objects.items() if obj in value)
-               color = [int(c) for c in colors[class_id]]
-               label = "%s: %.2f" % (class_labels[class_id], confidence)
-               cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
-               cv2.putText(frame, label, (startX, startY-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-            # --- Hiển thị frame lên placeholder ---
-            video_placeholder.image(frame, channels="RGB")
-
-            # --- Ghi frame vào video đầu ra ---
-            out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)) # Ghi frame đã xử lý
-
-        video_capture.release()
-        out.release()
-
-        # --- Cập nhật nút download ---
-        with open(temp_output_path, "rb") as file:
-            download_button_placeholder.download_button(
-                label="📥 Tải video kết quả",
-                data=file,
-                file_name="yolo_detection_video.mp4",
-                mime="video/mp4"
-            )
-        # --- Dọn dẹp tệp tạm ---
-        try:
-            os.remove(tfile.name)
-            os.remove(temp_output_path)
-        except Exception as e:
-            st.error(f"Lỗi khi xóa tệp tạm thời: {e}")
-
-elif option == "Webcam (Real-time)":
-    st.write("### 📹 Nhận diện đối tượng qua Webcam")
-    run = st.checkbox("▶️ Bắt đầu / Dừng")
-    FRAME_WINDOW = st.image([])  # Placeholder để hiển thị khung hình
-    camera = cv2.VideoCapture(0)  # Sử dụng webcam mặc định (index 0)
-
-    while run and yolo_model:
-        ret, frame = camera.read()
-        if not ret:
-            st.error("Không thể truy cập webcam.")
-            break
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # Chuyển sang RGB để hiển thị đúng màu
-        img_height, img_width = frame.shape[:2]
-        img_blob = cv2.dnn.blobFromImage(frame, 0.003922, (416, 416), swapRB=True, crop=False)
-
-        yolo_model.setInput(img_blob)
-        detection_layers = yolo_model.forward(yolo_output_layers)
-
-        # --- Xử lý detection và vẽ bounding box ---
-        detected_objects = {}
-
-        for layer in detection_layers:
-           for detection in layer:
-              scores = detection[5:]
-              class_id = np.argmax(scores)
-              confidence = scores[class_id]
-              if confidence > 0.5:
-                 box = detection[0:4] * np.array([img_width, img_height, img_width, img_height])
-                 (centerX, centerY, width, height) = box.astype("int")
-
-                 startX = int(centerX - (width / 2))
-                 startY = int(centerY - (height / 2))
-                 endX = int(startX + width)
-                 endY = int(startY + height)
-
-                 if class_id not in detected_objects:
-                    detected_objects[class_id]=[] 
-                 detected_objects[class_id].append({"box": (startX,startY, endX, endY), "confidence": float(confidence), "center" : (centerX, centerY)})
-
-        final_objects = []
-        for class_id, objects in detected_objects.items():
-           objects = sorted(objects, key=lambda x: x["confidence"], reverse = True)
-           grouped_objects = []
-           for obj in objects:
-              centerX, centerY = obj["center"]
-              found=False
-              for group in grouped_objects:
-                 existing_centerX, existing_centerY = group[0]["center"]
-                 distance = np.sqrt((centerX - existing_centerX)**2 + (centerY- existing_centerY)**2)
-                 if distance < 50: #ngưỡng khoảng cách
-                    found = True
+            while True:
+                ret, frame = vid.read()
+                if not ret:
                     break
-              if not found:
-                 grouped_objects.append([obj])
 
-           for group in grouped_objects:
-              best_object = max(group, key=lambda x:x["confidence"])
-              final_objects.append(best_object)
+                processed_frame = process_image(frame)
+                out.write(processed_frame) # Write the processed frame to the output video
+                output_placeholder.image(processed_frame, channels="BGR", caption="Processed Video")
 
-        for obj in final_objects:
-           startX, startY, endX, endY = obj["box"]
-           confidence = obj["confidence"]
-           class_id = next(key for key, value in detected_objects.items() if obj in value)
-           color = [int(c) for c in colors[class_id]]
-           label = "%s: %.2f" % (class_labels[class_id], confidence)
-           cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
-           cv2.putText(frame, label, (startX, startY-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            vid.release()
+            out.release()
 
-        FRAME_WINDOW.image(frame)  # Cập nhật khung hình lên placeholder
+            # Provide download link for processed video.
+            with open(temp_out_file.name, "rb") as file:
+                download_button_placeholder.download_button(
+                    label="Download Processed Video",
+                    data=file,
+                    file_name="processed_video.mp4",
+                    mime="video/mp4"
+                )
 
-    camera.release()
-    st.write("Kết thúc.")
+            # Clean up temporary files
+            os.remove(tfile.name)
+            os.remove(temp_out_file.name)
+
+
+
+    elif source == "Webcam":
+        if request_webcam_permission():
+            cap = cv2.VideoCapture(0)  # 0 is usually the default webcam
+
+            if not cap.isOpened():
+                st.error("Cannot open webcam. Please check your webcam connection and permissions.")
+                return
+
+            # Get webcam frame properties (for output video if needed)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps == 0.0:  # Handle case where FPS cannot be retrieved
+                fps = 24  # Use a reasonable default (e.g. 24 FPS)
+
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            # Streamlit doesn't support continuous video display within the main area efficiently.
+            # We will show the processed frame as a snapshot in each iteration
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    st.error("Failed to capture frame from webcam.")
+                    break
+
+                processed_frame = process_image(frame)
+                output_placeholder.image(processed_frame, channels="BGR", caption="Processed Webcam Feed")
+
+
+            cap.release()
+        else:
+             st.write("Webcam access denied.")
+
+if __name__ == "__main__":
+    # Create the 'model' directory if it doesn't exist
+    if not os.path.exists('model'):
+        os.makedirs('model')
+    download_weights()  # Call download_weights() to download or check for the weights file.
+    main()
