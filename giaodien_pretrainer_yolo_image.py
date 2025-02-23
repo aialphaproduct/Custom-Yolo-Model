@@ -74,6 +74,7 @@ if uploaded_file is not None and yolo_model:
 
     detected_objects = {}
 
+    # Lưu các bounding boxes theo class_id
     for layer in detection_layers:
         for detection in layer:
             scores = detection[5:]
@@ -88,12 +89,52 @@ if uploaded_file is not None and yolo_model:
                 endX = startX + width
                 endY = startY + height
 
-                if class_id not in detected_objects or detected_objects[class_id]["confidence"] < confidence:
-                    detected_objects[class_id] = {"box": (startX, startY, endX, endY), "confidence": confidence}
+                # Nếu class_id chưa có trong dict, khởi tạo danh sách mới
+                if class_id not in detected_objects:
+                    detected_objects[class_id] = []
 
-    for class_id, obj in detected_objects.items():
+                # Lưu bounding box vào danh sách tương ứng với class_id
+                detected_objects[class_id].append({
+                    "box": (startX, startY, endX, endY),
+                    "confidence": confidence,
+                    "center": (centerX, centerY)
+                })
+
+    # Lọc bounding box có confidence cao nhất cho từng đối tượng riêng lẻ
+    final_objects = []
+    for class_id, objects in detected_objects.items():
+        # Sắp xếp bounding boxes theo confidence giảm dần
+        objects = sorted(objects, key=lambda x: x["confidence"], reverse=True)
+
+        # Nhóm bounding boxes theo vị trí gần nhau
+        grouped_objects = []
+        for obj in objects:
+            centerX, centerY = obj["center"]
+
+            # Kiểm tra xem có đối tượng nào trong nhóm gần với vị trí này không
+            found = False
+            for group in grouped_objects:
+                existing_centerX, existing_centerY = group[0]["center"]
+                distance = np.sqrt((centerX - existing_centerX) ** 2 + (centerY - existing_centerY) ** 2)
+
+                if distance < 50:  # Ngưỡng để xác định các đối tượng giống nhau
+                    found = True
+                    break
+
+            # Nếu chưa có trong nhóm, thêm vào danh sách
+            if not found:
+                grouped_objects.append([obj])
+
+        # Chọn bounding box có confidence cao nhất từ mỗi nhóm
+        for group in grouped_objects:
+            best_object = max(group, key=lambda x: x["confidence"])
+            final_objects.append(best_object)
+
+    # Vẽ bounding boxes lên ảnh
+    for obj in final_objects:
         (startX, startY, endX, endY) = obj["box"]
         confidence = obj["confidence"]
+        class_id = next(key for key, val in detected_objects.items() if obj in val)  # Lấy class_id
         color = [int(c) for c in colors[class_id]]
         label = f"{class_labels[class_id]}: {confidence:.2f}"
 
@@ -103,6 +144,7 @@ if uploaded_file is not None and yolo_model:
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     st.image(img_rgb, caption="📍 Kết quả nhận diện", use_column_width=True)
 
+    # Xóa file tạm thời sau khi hiển thị
     for _ in range(3):
         try:
             if os.path.exists(image_path):
