@@ -59,26 +59,21 @@ st.write("Tải ảnh lên để nhận diện đối tượng bằng YOLOv3.")
 uploaded_file = st.file_uploader("📤 Chọn ảnh...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None and yolo_model:
-    # Tạo file tạm để lưu ảnh
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     tfile.write(uploaded_file.read())
     image_path = tfile.name
 
-    # Đọc ảnh mà không khóa file
     with open(image_path, "rb") as f:
         img_array = np.asarray(bytearray(f.read()), dtype=np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
     img_height, img_width = img.shape[:2]
-
-    # Chuyển ảnh sang blob để đưa vào YOLO
     img_blob = cv2.dnn.blobFromImage(img, 0.003922, (416, 416), swapRB=True, crop=False)
-
-    # Dự đoán với YOLO
     yolo_model.setInput(img_blob)
     detection_layers = yolo_model.forward(yolo_output_layers)
 
-    # Lặp qua các layer để lấy dự đoán
+    detected_objects = {}
+
     for layer in detection_layers:
         for detection in layer:
             scores = detection[5:]
@@ -86,34 +81,32 @@ if uploaded_file is not None and yolo_model:
             confidence = scores[class_id]
 
             if confidence > 0.5:
-                # Lấy tọa độ bounding box
                 box = detection[:4] * np.array([img_width, img_height, img_width, img_height])
                 (centerX, centerY, width, height) = box.astype("int")
-
                 startX = int(centerX - (width / 2))
                 startY = int(centerY - (height / 2))
                 endX = startX + width
                 endY = startY + height
 
-                # Lấy màu và label
-                color = [int(c) for c in colors[class_id]]
-                label = f"{class_labels[class_id]}: {confidence:.2f}"
+                if class_id not in detected_objects or detected_objects[class_id]["confidence"] < confidence:
+                    detected_objects[class_id] = {"box": (startX, startY, endX, endY), "confidence": confidence}
 
-                # Vẽ bounding box và text
-                cv2.rectangle(img, (startX, startY), (endX, endY), color, 2)
-                cv2.putText(img, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    for class_id, obj in detected_objects.items():
+        (startX, startY, endX, endY) = obj["box"]
+        confidence = obj["confidence"]
+        color = [int(c) for c in colors[class_id]]
+        label = f"{class_labels[class_id]}: {confidence:.2f}"
 
-    # Chuyển ảnh về RGB để hiển thị trên Streamlit
+        cv2.rectangle(img, (startX, startY), (endX, endY), color, 2)
+        cv2.putText(img, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    # Hiển thị ảnh sau khi nhận diện
     st.image(img_rgb, caption="📍 Kết quả nhận diện", use_column_width=True)
 
-    # Xử lý lỗi PermissionError khi xóa file
-    for _ in range(3):  # Thử xóa tối đa 3 lần
+    for _ in range(3):
         try:
             if os.path.exists(image_path):
                 os.remove(image_path)
             break
         except PermissionError:
-            time.sleep(2)  # Chờ 2 giây rồi thử lại
+            time.sleep(2)
