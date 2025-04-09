@@ -11,18 +11,18 @@ import os
 import gdown  # Import gdown
 
 
-# Function to download YOLOv3 weights from Google Drive
+# Function to download YOLOv5 weights from Google Drive
 def download_weights():
     file_id = "10ygsxRHye1DNgpErQZ6NghVIPhat6-UO"
-    output_path = "model/yolov3.weights"
+    output_path = "model/yolov5.weights"
 
     if not os.path.exists(output_path):
-        st.info("📥 Đang tải yolov3.weights từ Google Drive...")
+        st.info("📥 Đang tải yolov5.weights từ Google Drive...")
         file_url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(file_url, output_path, quiet=False)
-        st.success("✅ Đã tải xong yolov3.weights!")
+        st.success("✅ Đã tải xong yolov5.weights!")
     else:
-        st.info("✔️ File yolov3.weights đã có sẵn.")
+        st.info("✔️ File yolov5.weights đã có sẵn.")
 
 # Function to get permission for webcam access
 def request_webcam_permission():
@@ -36,7 +36,7 @@ def request_webcam_permission():
 
 def main():
 
-    st.title("Object Detection with YOLOv3 CPU LOADING")
+    st.title("Object Detection with YOLOv5 CPU LOADING")
 
     # Sidebar options
     source = st.sidebar.selectbox("Choose input source:", ("Image", "Video", "Webcam"))
@@ -83,7 +83,7 @@ def main():
         img_blob = cv2.dnn.blobFromImage(img_to_detect, 0.003922, (320, 320), swapRB=True, crop=False)
 
         # Loading pretrained model
-        yolo_model = cv2.dnn.readNetFromDarknet('model/yolov3.cfg', 'model/yolov3.weights')
+        yolo_model = cv2.dnn.readNetFromDarknet('model/yolov5.cfg', 'model/yolov5.weights')
 
         # Get all layers
         yolo_layers = yolo_model.getLayerNames()
